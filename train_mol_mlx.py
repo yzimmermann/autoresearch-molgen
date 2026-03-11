@@ -21,6 +21,7 @@ import mlx.core as mx
 import mlx.nn as nn
 import mlx.optimizers as optim
 import numpy as np
+from mlx.utils import tree_flatten, tree_map
 
 from prepare_mol import TIME_BUDGET, load_dataset
 
@@ -31,6 +32,8 @@ N_LAYERS = 6
 TIME_EMB_DIM = 64
 LR = 3e-4
 WEIGHT_DECAY = 1e-4
+MAX_GRAD_NORM = 1.0
+COORD_SCALE_LIMIT = 1.0
 SIGMA_MIN = 0.02
 SIGMA_MAX = 1.0
 ATOM_CORRUPT_MIN = 0.15
@@ -131,6 +134,10 @@ class EGNNBlock(nn.Module):
             nn.SiLU(),
             nn.Linear(hidden_dim, 1),
         )
+        # Start with near-identity coordinate dynamics; this path is the main
+        # source of blow-ups when the model is widened or randomly unlucky.
+        self.coord_mlp.layers[-1].weight = mx.zeros_like(self.coord_mlp.layers[-1].weight)
+        self.coord_mlp.layers[-1].bias = mx.zeros_like(self.coord_mlp.layers[-1].bias)
         self.node_mlp = nn.Sequential(
             nn.Linear(hidden_dim * 2, hidden_dim),
             nn.SiLU(),
@@ -156,7 +163,7 @@ class EGNNBlock(nn.Module):
         messages = self.edge_mlp(edge_inputs) * edge_mask.astype(mx.float32)
 
         denom = mx.maximum(edge_mask.astype(mx.float32).sum(axis=2), 1.0)
-        coord_scale = self.coord_mlp(messages)
+        coord_scale = mx.tanh(self.coord_mlp(messages)) * COORD_SCALE_LIMIT
         coord_update = (diff * coord_scale * edge_mask.astype(mx.float32)).sum(axis=2) / denom
         x = remove_masked_mean(x + coord_update, mask)
 
@@ -305,6 +312,27 @@ def tree_leaves(tree):
     return [tree]
 
 
+def tree_all_finite(tree) -> bool:
+    finite = True
+    for _, leaf in tree_flatten(tree):
+        finite = finite and bool(mx.all(mx.isfinite(leaf)).item())
+    return finite
+
+
+def global_grad_norm(grads) -> mx.array:
+    sq_norm = mx.array(0.0, dtype=mx.float32)
+    for _, leaf in tree_flatten(grads):
+        sq_norm = sq_norm + mx.sum(leaf.astype(mx.float32) * leaf.astype(mx.float32))
+    return mx.sqrt(sq_norm)
+
+
+def clip_grads(grads, max_norm: float):
+    grad_norm = global_grad_norm(grads)
+    scale = mx.minimum(mx.array(1.0, dtype=mx.float32), mx.array(max_norm, dtype=mx.float32) / mx.maximum(grad_norm, 1e-6))
+    clipped = tree_map(lambda leaf: leaf * scale.astype(leaf.dtype), grads)
+    return clipped, grad_norm
+
+
 def main():
     parser = argparse.ArgumentParser(description="Train a minimal QM9 molecule denoiser with MLX")
     parser.set_defaults(remove_h=REMOVE_H)
@@ -340,10 +368,12 @@ def main():
     print(f"Model: hidden_dim={HIDDEN_DIM} layers={N_LAYERS} params={num_params / 1e6:.2f}M")
     print(f"Batch size: {args.batch_size}")
     print(f"Time budget: {args.time_budget}s")
+    print(f"Max grad norm: {MAX_GRAD_NORM}")
 
     state = TrainState()
     batch_iter = iterate_batches(train_data, batch_size=args.batch_size, shuffle=True, seed=42)
     rng = np.random.default_rng(42)
+    nonfinite_abort = False
 
     while True:
         batch = next(batch_iter)
@@ -361,6 +391,12 @@ def main():
             sigma,
             corrupt_mask,
         )
+        mx.eval(loss, grads)
+        if not bool(mx.all(mx.isfinite(loss)).item()) or not tree_all_finite(grads):
+            print(f"\nAborting: non-finite loss/gradients at step {state.step + 1}")
+            nonfinite_abort = True
+            break
+        grads, grad_norm = clip_grads(grads, MAX_GRAD_NORM)
         optimizer.update(model, grads)
         pos_loss, atom_loss = None, None
         total_loss, pos_loss, atom_loss = metrics_fn(
@@ -373,7 +409,11 @@ def main():
             sigma,
             corrupt_mask,
         )
-        mx.eval(loss, total_loss, pos_loss, atom_loss, model.parameters(), optimizer.state)
+        mx.eval(loss, total_loss, pos_loss, atom_loss, grad_norm, model.parameters(), optimizer.state)
+        if not bool(mx.all(mx.isfinite(total_loss)).item()):
+            print(f"\nAborting: non-finite post-update loss at step {state.step + 1}")
+            nonfinite_abort = True
+            break
         dt = time.time() - t0
 
         state.step += 1
@@ -386,7 +426,7 @@ def main():
         print(
             f"\rstep {state.step:05d} | loss {state.smooth_loss:.4f} | "
             f"pos {float(pos_loss.item()):.4f} | atom {float(atom_loss.item()):.4f} | "
-            f"samples/sec {samples_per_sec:.1f}",
+            f"gnorm {float(grad_norm.item()):.3f} | samples/sec {samples_per_sec:.1f}",
             end="",
             flush=True,
         )
@@ -411,6 +451,7 @@ def main():
     print(f"max_nodes:        {max_nodes}")
     print(f"remove_h:         {args.remove_h}")
     print(f"backend:          mlx")
+    print(f"nonfinite_abort:  {nonfinite_abort}")
 
 
 if __name__ == "__main__":
