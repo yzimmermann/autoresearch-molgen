@@ -36,6 +36,47 @@ The current path is:
 - inner-loop metric: `val_loss`
 - periodic chemistry metrics: planned in a separate evaluation script
 
+## Quick Start
+
+Requirements: Python 3.10+, [uv](https://docs.astral.sh/uv/), and one
+accelerator:
+
+- Apple Silicon for the `MLX` path
+- a single NVIDIA GPU for the `CUDA` path
+
+```bash
+# 1. Install uv project manager (if you don't already have it)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# 2. Install dependencies
+uv sync
+
+# 3. Prepare the tiny QM9-noH benchmark (one-time)
+uv run prepare_mol.py --remove-h
+
+# 4a. Manually run a single Apple Silicon MLX experiment (~5 min)
+uv run train_mol_mlx.py --remove-h --time-budget 300
+
+# 4b. Or manually run a single CUDA experiment (~5 min)
+uv run train_mol.py --remove-h --device cuda --time-budget 300
+```
+
+If the above commands work, the setup is working and you can go into
+autonomous molecule research mode.
+
+For the full QM9 benchmark instead of the tiny dev benchmark:
+
+```bash
+uv run prepare_mol.py
+uv run train_mol_mlx.py --with-h --time-budget 300
+```
+
+Or on CUDA:
+
+```bash
+uv run train_mol.py --with-h --device cuda --time-budget 300
+```
+
 ## Repo Layout
 
 ```text
@@ -64,9 +105,12 @@ Summary:
   - `num_atoms`
 - per-run objective: `val_loss`
 
-## Quick Start
+## Training Commands
 
-### 1. Prepare the tiny benchmark
+Use MLX on Apple Silicon by default. The Torch `mps` path works, but it is
+currently much slower.
+
+Prepare the tiny benchmark:
 
 ```bash
 python3 prepare_mol.py --remove-h
@@ -78,26 +122,23 @@ This creates:
 ~/.cache/autoresearch-mol/qm9/processed/qm9_noh.pt
 ```
 
-### 2. Train on Apple Silicon with MLX
+Run MLX on Apple Silicon:
 
 ```bash
 python3 train_mol_mlx.py --remove-h --time-budget 300
 ```
 
-### 3. Train on CUDA with PyTorch
+Run CUDA with PyTorch:
 
 ```bash
 python3 train_mol.py --remove-h --device cuda --time-budget 300
 ```
 
-### 4. Train on Apple GPU with Torch fallback
+Run Torch `mps` fallback on Apple GPU:
 
 ```bash
 python3 train_mol.py --remove-h --device mps --time-budget 300
 ```
-
-Use MLX on Apple Silicon by default. The Torch `mps` path works, but it is
-currently much slower.
 
 ## What The Training Scripts Do
 
@@ -141,6 +182,19 @@ The repo is set up to support an autonomous keep/discard loop:
 
 The active instructions live in
 [program.md](program.md).
+
+## Running The Agent
+
+Spin up Codex, Claude, or another coding agent in this repo, disable
+permissions, and prompt it with [program.md](program.md).
+
+For example:
+
+```text
+Hi have a look at program.md and let's kick off a new molecule experiment. Let's do the setup first.
+```
+
+`program.md` is the lightweight control file for the autonomous research loop.
 
 ## Current Status
 
