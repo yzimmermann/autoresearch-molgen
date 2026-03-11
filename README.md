@@ -44,6 +44,9 @@ Requirements: Python 3.10+, [uv](https://docs.astral.sh/uv/), and one of:
 - a single NVIDIA GPU for the `CUDA` path
 - an Intel Mac or other CPU-only machine for smoke tests via `train_mol.py --device cpu`
 
+On Apple Silicon, make sure `uv` is using a native `arm64` Python interpreter.
+If it picks an Intel `/usr/local/...` Python under Rosetta, MLX will not install.
+
 ```bash
 # 1. Install uv project manager (if you don't already have it)
 curl -LsSf https://astral.sh/uv/install.sh | sh
