@@ -38,11 +38,11 @@ The current path is:
 
 ## Quick Start
 
-Requirements: Python 3.10+, [uv](https://docs.astral.sh/uv/), and one
-accelerator:
+Requirements: Python 3.10+, [uv](https://docs.astral.sh/uv/), and one of:
 
 - Apple Silicon for the `MLX` path
 - a single NVIDIA GPU for the `CUDA` path
+- an Intel Mac or other CPU-only machine for smoke tests via `train_mol.py --device cpu`
 
 ```bash
 # 1. Install uv project manager (if you don't already have it)
@@ -63,6 +63,12 @@ uv run train_mol.py --remove-h --device cuda --time-budget 300
 
 If the above commands work, the setup is working and you can go into
 autonomous molecule research mode.
+
+On an Intel Mac, use the CPU smoke-test path instead:
+
+```bash
+uv run train_mol.py --remove-h --device cpu --time-budget 60
+```
 
 For the full QM9 benchmark instead of the tiny dev benchmark:
 
