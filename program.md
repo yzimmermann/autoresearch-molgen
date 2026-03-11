@@ -1,114 +1,166 @@
-# autoresearch
+# autoresearch molecules
 
-This is an experiment to have the LLM do its own research.
+This is an experiment to have the LLM do its own research on a 3D molecule
+generator.
 
 ## Setup
 
 To set up a new experiment, work with the user to:
 
-1. **Agree on a run tag**: propose a tag based on today's date (e.g. `mar5`). The branch `autoresearch/<tag>` must not already exist — this is a fresh run.
-2. **Create the branch**: `git checkout -b autoresearch/<tag>` from current master.
-3. **Read the in-scope files**: The repo is small. Read these files for full context:
+1. **Agree on a run tag**: propose a tag based on today's date, e.g. `mar11`.
+   The branch `autoresearch/mol-<tag>` must not already exist.
+2. **Create the branch**: `git checkout -b autoresearch/mol-<tag>` from the current
+   branch.
+3. **Read the in-scope files**:
    - `README.md` — repository context.
-   - `prepare.py` — fixed constants, data prep, tokenizer, dataloader, evaluation. Do not modify.
-   - `train.py` — the file you modify. Model architecture, optimizer, training loop.
-4. **Verify data exists**: Check that `~/.cache/autoresearch/` contains data shards and a tokenizer. If not, tell the human to run `uv run prepare.py`.
-5. **Initialize results.tsv**: Create `results.tsv` with just the header row. The baseline will be recorded after the first run.
-6. **Confirm and go**: Confirm setup looks good.
+   - `qm9_benchmark.md` — fixed benchmark contract.
+   - `prepare_mol.py` — fixed data prep and dataset utilities. Do not modify.
+   - `train_mol_mlx.py` — the Apple Silicon MLX training file.
+   - `train_mol.py` — the Torch training file for `cuda`, `mps`, and `cpu`.
+4. **Choose the active backend for this machine**:
+   - On Apple Silicon, default to `train_mol_mlx.py`.
+   - On NVIDIA/CUDA, default to `train_mol.py --device cuda`.
+   - Do not edit both training files in the same experiment unless the user
+     explicitly asks for backend parity work.
+5. **Verify data exists**:
+   - For the tiny dev benchmark, check for
+     `~/.cache/autoresearch-mol/qm9/processed/qm9_noh.pt`.
+   - If it does not exist, run `python3 prepare_mol.py --remove-h`.
+6. **Initialize `results_mol.tsv`**: create it with just the header row. The
+   baseline will be recorded after the first run.
+7. **Confirm and go**: confirm setup looks good.
 
-Once you get confirmation, kick off the experimentation.
+Once the user confirms, kick off the experimentation.
 
 ## Experimentation
 
-Each experiment runs on a single GPU. The training script runs for a **fixed time budget of 5 minutes** (wall clock training time, excluding startup/compilation). You launch it simply as: `uv run train.py`.
+Each experiment runs on a single accelerator. The training script runs for a
+**fixed 5-minute time budget** of measured training time. Use the tiny QM9-noH
+benchmark first unless the user explicitly asks for full QM9 with hydrogens.
 
-**What you CAN do:**
-- Modify `train.py` — this is the only file you edit. Everything is fair game: model architecture, optimizer, hyperparameters, training loop, batch size, model size, etc.
+**Current default commands**
 
-**What you CANNOT do:**
-- Modify `prepare.py`. It is read-only. It contains the fixed evaluation, data loading, tokenizer, and training constants (time budget, sequence length, etc).
-- Install new packages or add dependencies. You can only use what's already in `pyproject.toml`.
-- Modify the evaluation harness. The `evaluate_bpb` function in `prepare.py` is the ground truth metric.
+- Apple Silicon MLX:
+  - `python3 train_mol_mlx.py --remove-h --time-budget 300`
+- NVIDIA/CUDA:
+  - `python3 train_mol.py --remove-h --device cuda --time-budget 300`
 
-**The goal is simple: get the lowest val_bpb.** Since the time budget is fixed, you don't need to worry about training time — it's always 5 minutes. Everything is fair game: change the architecture, the optimizer, the hyperparameters, the batch size, the model size. The only constraint is that the code runs without crashing and finishes within the time budget.
+**What you CAN do**
 
-**VRAM** is a soft constraint. Some increase is acceptable for meaningful val_bpb gains, but it should not blow up dramatically.
+- Modify the active training file:
+  - `train_mol_mlx.py` on Apple Silicon
+  - `train_mol.py` on CUDA
+- Change model architecture, optimizer, hyperparameters, batch size, training
+  schedule, and backend-local implementation details.
 
-**Simplicity criterion**: All else being equal, simpler is better. A small improvement that adds ugly complexity is not worth it. Conversely, removing something and getting equal or better results is a great outcome — that's a simplification win. When evaluating whether to keep a change, weigh the complexity cost against the improvement magnitude. A 0.001 val_bpb improvement that adds 20 lines of hacky code? Probably not worth it. A 0.001 val_bpb improvement from deleting code? Definitely keep. An improvement of ~0 but much simpler code? Keep.
+**What you CANNOT do**
 
-**The first run**: Your very first run should always be to establish the baseline, so you will run the training script as is.
+- Modify `prepare_mol.py`. It is the fixed benchmark/data harness.
+- Modify `qm9_benchmark.md` during experiment runs.
+- Change the per-run metric from `val_loss`.
+- Change the dataset split or silently switch benchmarks mid-run.
+
+**The goal is simple: get the lowest `val_loss`.** Since the time budget is
+fixed, experiments are compared on the same 5-minute budget.
+
+**Memory** is a soft constraint. Some increase is acceptable if it improves
+`val_loss`, but avoid wasteful blowups.
+
+**Simplicity criterion**: all else equal, simpler is better. A tiny gain that
+adds fragile complexity is usually not worth keeping. A comparable result with
+less code is a win.
+
+**The first run**: always establish the baseline before making changes.
 
 ## Output format
 
-Once the script finishes it prints a summary like this:
+At the end of a run, the script should print a summary like:
 
-```
+```text
 ---
-val_bpb:          0.997900
+val_loss:         1.234567
+val_pos_loss:     0.123456
+val_atom_loss:    0.654321
 training_seconds: 300.1
-total_seconds:    325.9
-peak_vram_mb:     45060.2
-mfu_percent:      39.80
-total_tokens_M:   499.6
-num_steps:        953
-num_params_M:     50.3
-depth:            8
+total_seconds:    319.0
+peak_vram_mb:     8123.4
+samples_per_sec:  1456.7
+num_steps:        1200
+num_params_M:     1.7
+max_nodes:        9
+remove_h:         True
+backend:          mlx
 ```
 
-Note that the script is configured to always stop after 5 minutes, so depending on the computing platform of this computer the numbers might look different. You can extract the key metric from the log file:
+Extract the key metric from the log with:
 
-```
-grep "^val_bpb:" run.log
+```bash
+grep "^val_loss:\|^peak_vram_mb:" run.log
 ```
 
 ## Logging results
 
-When an experiment is done, log it to `results.tsv` (tab-separated, NOT comma-separated — commas break in descriptions).
+When an experiment is done, log it to `results_mol.tsv` (tab-separated).
 
-The TSV has a header row and 5 columns:
+The TSV has 6 columns:
 
-```
-commit	val_bpb	memory_gb	status	description
+```text
+commit	backend	val_loss	memory_gb	status	description
 ```
 
 1. git commit hash (short, 7 chars)
-2. val_bpb achieved (e.g. 1.234567) — use 0.000000 for crashes
-3. peak memory in GB, round to .1f (e.g. 12.3 — divide peak_vram_mb by 1024) — use 0.0 for crashes
-4. status: `keep`, `discard`, or `crash`
-5. short text description of what this experiment tried
+2. backend: `mlx`, `cuda`, `mps`, or `cpu`
+3. `val_loss` achieved — use `0.000000` for crashes
+4. peak memory in GB, round to `.1f` — use `0.0` for crashes
+5. status: `keep`, `discard`, or `crash`
+6. short text description of what the experiment tried
 
 Example:
 
-```
-commit	val_bpb	memory_gb	status	description
-a1b2c3d	0.997900	44.0	keep	baseline
-b2c3d4e	0.993200	44.2	keep	increase LR to 0.04
-c3d4e5f	1.005000	44.0	discard	switch to GeLU activation
-d4e5f6g	0.000000	0.0	crash	double model width (OOM)
+```text
+commit	backend	val_loss	memory_gb	status	description
+a1b2c3d	mlx	1.612342	0.0	keep	baseline tiny qm9-noh
+b2c3d4e	mlx	1.544210	0.1	keep	increase hidden dim to 256
+c3d4e5f	mlx	1.620001	0.1	discard	add dropout
+d4e5f6g	mlx	0.000000	0.0	crash	breaks masking logic
 ```
 
 ## The experiment loop
 
-The experiment runs on a dedicated branch (e.g. `autoresearch/mar5` or `autoresearch/mar5-gpu0`).
+The experiment runs on a dedicated branch, e.g. `autoresearch/mol-mar11`.
 
 LOOP FOREVER:
 
-1. Look at the git state: the current branch/commit we're on
-2. Tune `train.py` with an experimental idea by directly hacking the code.
-3. git commit
-4. Run the experiment: `uv run train.py > run.log 2>&1` (redirect everything — do NOT use tee or let output flood your context)
-5. Read out the results: `grep "^val_bpb:\|^peak_vram_mb:" run.log`
-6. If the grep output is empty, the run crashed. Run `tail -n 50 run.log` to read the Python stack trace and attempt a fix. If you can't get things to work after more than a few attempts, give up.
-7. Record the results in the tsv (NOTE: do not commit the results.tsv file, leave it untracked by git)
-8. If val_bpb improved (lower), you "advance" the branch, keeping the git commit
-9. If val_bpb is equal or worse, you git reset back to where you started
+1. Look at the git state: current branch and commit.
+2. Tune the active training file with one experimental idea.
+3. git commit.
+4. Run the experiment:
+   - `python3 train_mol_mlx.py --remove-h --time-budget 300 > run.log 2>&1`
+   - or `python3 train_mol.py --remove-h --device cuda --time-budget 300 > run.log 2>&1`
+5. Read out the results:
+   - `grep "^val_loss:\|^peak_vram_mb:" run.log`
+6. If the grep output is empty, the run crashed. Read the traceback with:
+   - `tail -n 50 run.log`
+7. Record the results in `results_mol.tsv`. Do not commit the TSV file.
+8. If `val_loss` improved (lower), keep the commit and advance the branch.
+9. If `val_loss` is equal or worse, reset back to where the run started.
 
-The idea is that you are a completely autonomous researcher trying things out. If they work, keep. If they don't, discard. And you're advancing the branch so that you can iterate. If you feel like you're getting stuck in some way, you can rewind but you should probably do this very very sparingly (if ever).
+The idea is: try one idea, run a
+fixed-time experiment, keep only wins, and iterate indefinitely.
 
-**Timeout**: Each experiment should take ~5 minutes total (+ a few seconds for startup and eval overhead). If a run exceeds 10 minutes, kill it and treat it as a failure (discard and revert).
+**Timeout**: a run should be about 5 minutes of training time plus startup and
+validation overhead. If a run exceeds 10 minutes wall clock, kill it and treat
+it as a failure.
 
-**Crashes**: If a run crashes (OOM, or a bug, or etc.), use your judgment: If it's something dumb and easy to fix (e.g. a typo, a missing import), fix it and re-run. If the idea itself is fundamentally broken, just skip it, log "crash" as the status in the tsv, and move on.
+**Crashes**: if a run crashes for a fixable reason, fix it and rerun. If the
+idea itself is bad, log `crash`, revert, and move on.
 
-**NEVER STOP**: Once the experiment loop has begun (after the initial setup), do NOT pause to ask the human if you should continue. Do NOT ask "should I keep going?" or "is this a good stopping point?". The human might be asleep, or gone from a computer and expects you to continue working *indefinitely* until you are manually stopped. You are autonomous. If you run out of ideas, think harder — read papers referenced in the code, re-read the in-scope files for new angles, try combining previous near-misses, try more radical architectural changes. The loop runs until the human interrupts you, period.
+**NEVER STOP**: once the loop begins, do not pause to ask the human whether to
+continue. Keep iterating until explicitly interrupted.
 
-As an example use case, a user might leave you running while they sleep. If each experiment takes you ~5 minutes then you can run approx 12/hour, for a total of about 100 over the duration of the average human sleep. The user then wakes up to experimental results, all completed by you while they slept!
+## Important nuance
+
+`val_loss` is the inner-loop optimization target. Sample-quality metrics such
+as `mol_stable`, `atm_stable`, `validity`, `uniqueness`, and `novelty` should
+be added in a separate evaluation script and run periodically, not on every
+5-minute experiment.
