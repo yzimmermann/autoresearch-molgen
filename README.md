@@ -2,8 +2,7 @@
 
 Autonomous research loop for 3D molecule generation on a single accelerator.
 
-This fork adapts Andrej Karpathy's `autoresearch` idea from text pretraining to
-generative modeling over:
+This repo adapts the `autoresearch` workflow to generative modeling over:
 
 - atom types
 - 3D coordinates
@@ -17,9 +16,18 @@ The current benchmark is a deliberately simple QM9 setup for fast iteration on:
 
 ## What This Repo Is
 
-The original project optimized a tiny text model with a fixed 5-minute
-experiment loop. This fork keeps that workflow shape, but swaps in a simple 3D
-molecule generator and a fixed `val_loss` objective.
+The original idea is unchanged:
+
+1. give an agent a small but real training setup
+2. run fixed-time experiments
+3. compare one scalar metric
+4. keep only improvements
+5. let the loop continue autonomously
+
+What changes here is the domain:
+
+- from text pretraining
+- to unconditional 3D molecule generation
 
 The current path is:
 
@@ -28,37 +36,27 @@ The current path is:
 - inner-loop metric: `val_loss`
 - periodic chemistry metrics: planned in a separate evaluation script
 
-## Current Files
+## Repo Layout
 
 ```text
-prepare.py         — original text data path from upstream
-train.py           — original text model from upstream
-
 prepare_mol.py     — fixed QM9 preprocessing and dataloading utilities
 train_mol.py       — Torch trainer for cuda/mps/cpu
 train_mol_mlx.py   — MLX trainer for Apple Silicon
 qm9_benchmark.md   — fixed benchmark contract
 program.md         — autonomous research instructions for molecules
+pyproject.toml     — dependencies
 ```
-
-For molecule research, the relevant files are:
-
-- [prepare_mol.py](/Users/yoel/autoresearch/prepare_mol.py)
-- [train_mol.py](/Users/yoel/autoresearch/train_mol.py)
-- [train_mol_mlx.py](/Users/yoel/autoresearch/train_mol_mlx.py)
-- [qm9_benchmark.md](/Users/yoel/autoresearch/qm9_benchmark.md)
-- [program.md](/Users/yoel/autoresearch/program.md)
 
 ## Benchmark
 
-The benchmark contract is documented in
-[qm9_benchmark.md](/Users/yoel/autoresearch/qm9_benchmark.md).
+The benchmark contract lives in
+[qm9_benchmark.md](qm9_benchmark.md).
 
 Summary:
 
 - dataset: official QM9 XYZ archive
 - tiny dev benchmark: `QM9-noH`
-- official benchmark: QM9 with hydrogens
+- official benchmark: full QM9 with hydrogens
 - tensor format:
   - `atom_types`
   - `positions`
@@ -107,7 +105,7 @@ The current trainers implement a minimal EGNN-style denoising baseline.
 
 They:
 
-1. load the fixed QM9 tensors
+1. load fixed QM9 tensors
 2. corrupt atom identities and coordinates
 3. predict denoised positions and masked atom types
 4. train for a fixed wall-clock budget
@@ -133,8 +131,7 @@ backend:          mlx
 
 ## Research Loop
 
-The repo is set up to support the same style of autonomous keep/discard loop as
-the original project:
+The repo is set up to support an autonomous keep/discard loop:
 
 1. edit the active training file
 2. run a fixed 5-minute experiment
@@ -142,8 +139,8 @@ the original project:
 4. keep only improvements
 5. log runs to `results_mol.tsv`
 
-The active instructions for the agent live in
-[program.md](/Users/yoel/autoresearch/program.md).
+The active instructions live in
+[program.md](program.md).
 
 ## Current Status
 
@@ -160,16 +157,8 @@ What is still missing:
 
 - separate sample evaluation script
 - stability/validity/uniqueness/novelty reporting
-- harder training-safety rails for longer unattended search
+- stronger training-safety rails for longer unattended search
 - larger benchmarks like GEOM-Drugs
-
-## Notes
-
-- The upstream text files are still present because this fork started from the
-  original repo.
-- The current molecule path is intentionally simple and benchmark-first.
-- For actual unattended research, the next engineering task is to harden the
-  trainer against divergence before allowing indefinite loops.
 
 ## License
 

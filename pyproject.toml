@@ -1,19 +1,13 @@
 [project]
-name = "autoresearch"
+name = "autoresearch-molgen"
 version = "0.1.0"
-description = "Autonomous pretraining research swarm"
+description = "Autonomous research loop for 3D molecule generation"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "kernels>=0.11.7",
-    "matplotlib>=3.10.8",
     "mlx>=0.31.0; platform_system == 'Darwin' and platform_machine == 'arm64'",
     "numpy>=2.2.6",
-    "pandas>=2.3.3",
-    "pyarrow>=21.0.0",
     "requests>=2.32.0",
-    "rustbpe>=0.1.0",
-    "tiktoken>=0.11.0",
     "torch==2.9.1",
 ]
 
