@@ -5,8 +5,10 @@ description = "Autonomous research loop for 3D molecule generation"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
+    "matplotlib>=3.9.2",
     "mlx>=0.31.0; platform_system == 'Darwin' and platform_machine == 'arm64'",
     "numpy>=2.2.6",
+    "pandas>=2.2.3",
     "requests>=2.32.0",
     "torch==2.9.1; platform_system != 'Darwin' or platform_machine == 'arm64'",
     "torch==2.2.2; platform_system == 'Darwin' and platform_machine == 'x86_64'",

@@ -23,3 +23,5 @@ dev/
 results.tsv
 results_mol.tsv
 run.log
+progress_mol.png
+.ipynb_checkpoints/

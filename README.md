@@ -92,6 +92,7 @@ uv run train_mol.py --with-h --device cuda --time-budget 300
 prepare_mol.py     — fixed QM9 preprocessing and dataloading utilities
 train_mol.py       — Torch trainer for cuda/mps/cpu
 train_mol_mlx.py   — MLX trainer for Apple Silicon
+analysis_mol.ipynb — notebook for analyzing results_mol.tsv
 qm9_benchmark.md   — fixed benchmark contract
 program.md         — autonomous research instructions for molecules
 pyproject.toml     — dependencies
@@ -191,6 +192,12 @@ The repo is set up to support an autonomous keep/discard loop:
 
 The active instructions live in
 [program.md](program.md).
+
+## Analysis
+
+Open [analysis_mol.ipynb](analysis_mol.ipynb) in Jupyter to inspect
+`results_mol.tsv`, plot validation-loss progress, summarize keep/discard/crash
+rates, compare backends, and rank kept experiments by improvement.
 
 ## Running The Agent
 
