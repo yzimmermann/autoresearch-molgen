@@ -1,5 +1,7 @@
 # autoresearch-molgen
 
+![teaser](progress_mol.png)
+
 Autonomous research loop for 3D molecule generation on a single accelerator.
 
 This repo adapts the `autoresearch` workflow to generative modeling over:
